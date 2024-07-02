@@ -5,11 +5,14 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {ILayerZeroEndpointV2} from "./interfaces/ILayerZeroEndpointV2.sol";
+import {ILayerZeroEndpoint} from "./interfaces/ILayerZeroEndpoint.sol";
 import {ILayerZeroDVN} from "./interfaces/ILayerZeroDVN.sol";
 import {IReceiveUlnE2, Verification, UlnConfig} from "./interfaces/IReceiveUlnE2.sol";
 import "./interfaces/IMuonClient.sol";
+import "./utils/PacketV1Codec.sol";
 
 contract MuonDVN is ILayerZeroDVN, AccessControl {
+    using PacketV1Codec for bytes;
     using ECDSA for bytes32;
     using MessageHashUtils for bytes32;
 
@@ -21,14 +24,16 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
         bytes32 payloadHash;
         uint64 confirmations;
         address sender;
+        address receiver;
         bytes options;
     }
 
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
+    bytes32 public constant MESSAGE_LIB_ROLE = keccak256("MESSAGE_LIB_ROLE");
 
     ILayerZeroEndpointV2 public layerZeroEndpointV2;
-    address public sendLib302;
-    IReceiveUlnE2 public receiveLib302;
+    ILayerZeroEndpoint public layerZeroEndpointV1;
+    uint32 public immutable localEid;
 
     uint256 public lastJobId;
 
@@ -47,21 +52,21 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
     mapping(uint32 => mapping(uint256 => bool)) public verifiedJobs;
 
     event JobAssigned(uint256 jobId);
+    event Verified(uint32 srcEid, uint256 jobId);
 
     constructor(
         uint256 _muonAppId,
         IMuonClient.PublicKey memory _muonPublicKey,
         address _muon,
         address _layerZeroEndpointV2,
-        address _sendLib302,
-        address _receiveLib302
+        address _layerZeroEndpointV1
     ) {
         muonAppId = _muonAppId;
         muonPublicKey = _muonPublicKey;
         muon = IMuonClient(_muon);
         layerZeroEndpointV2 = ILayerZeroEndpointV2(_layerZeroEndpointV2);
-        sendLib302 = _sendLib302;
-        receiveLib302 = IReceiveUlnE2(_receiveLib302);
+        layerZeroEndpointV1 = ILayerZeroEndpoint(_layerZeroEndpointV1);
+        localEid = layerZeroEndpointV2.eid();
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(ADMIN_ROLE, msg.sender);
     }
@@ -69,10 +74,14 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
     function assignJob(
         AssignJobParam calldata _param,
         bytes calldata _options
-    ) external payable override returns (uint256 _fee) {
+    )
+        external
+        payable
+        override
+        onlyRole(MESSAGE_LIB_ROLE)
+        returns (uint256 _fee)
+    {
         require(supportedDstChain[_param.dstEid], "Unsupported chain");
-
-        require(msg.sender == sendLib302, "Invalid sender");
 
         uint256 jobId = ++lastJobId;
         Job storage newJob = jobs[jobId];
@@ -84,6 +93,9 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
         newJob.payloadHash = _param.payloadHash;
         newJob.confirmations = _param.confirmations;
         newJob.sender = _param.sender;
+        newJob.receiver = address(
+            uint160(uint256(_param.packetHeader.receiver()))
+        );
         newJob.options = _options;
 
         emit JobAssigned(jobId);
@@ -107,11 +119,12 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
         bytes memory _packetHeader,
         bytes32 _payloadHash,
         uint64 _confirmations,
+        address _receiver,
         bytes calldata _reqId,
         IMuonClient.SchnorrSign calldata _signature,
         bytes calldata gatewaySignature
     ) external {
-        require(_dstEid == layerZeroEndpointV2.eid(), "Invalid dstEid");
+        require(_isLocal(_dstEid), "Invalid dstEid");
         require(
             !verifiedJobs[_srcEid][_jobId],
             "src jobId is already verified"
@@ -134,7 +147,15 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
 
         _verifyMuonSig(_reqId, hash, _signature, gatewaySignature);
 
-        receiveLib302.verify(_packetHeader, _payloadHash, _confirmations);
+        _lzVerify(
+            _srcEid,
+            _packetHeader,
+            _payloadHash,
+            _confirmations,
+            _receiver
+        );
+
+        emit Verified(_srcEid, _jobId);
     }
 
     function setMuonAppId(uint256 _muonAppId) external onlyRole(ADMIN_ROLE) {
@@ -161,16 +182,6 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
         address _layerZeroEndpointV2
     ) external onlyRole(ADMIN_ROLE) {
         layerZeroEndpointV2 = ILayerZeroEndpointV2(_layerZeroEndpointV2);
-    }
-
-    function setSendLib302(address _sendLib302) external onlyRole(ADMIN_ROLE) {
-        sendLib302 = _sendLib302;
-    }
-
-    function setReceiveLib302(
-        address _receiveLib302
-    ) external onlyRole(ADMIN_ROLE) {
-        receiveLib302 = IReceiveUlnE2(_receiveLib302);
     }
 
     function updateSupportedDstChain(
@@ -203,5 +214,45 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
                 "Gateway is not valid"
             );
         }
+    }
+
+    function _lzVerify(
+        uint32 _srcEid,
+        bytes memory _packetHeader,
+        bytes32 _payloadHash,
+        uint64 _confirmations,
+        address _receiver
+    ) internal {
+        address receiverLib;
+        if (_isV2(_srcEid)) {
+            (receiverLib, ) = layerZeroEndpointV2.getReceiveLibrary(
+                _receiver,
+                _srcEid
+            );
+        } else {
+            receiverLib = layerZeroEndpointV1.getReceiveLibraryAddress(
+                _receiver
+            );
+        }
+
+        IReceiveUlnE2(receiverLib).verify(
+            _packetHeader,
+            _payloadHash,
+            _confirmations
+        );
+    }
+
+    function _isLocal(uint32 _dstEid) internal view returns (bool) {
+        if (localEid == _dstEid || localEid == _dstEid + 30000) {
+            return true;
+        }
+        return false;
+    }
+
+    function _isV2(uint32 _eid) internal pure returns (bool) {
+        if (_eid > 30000) {
+            return true;
+        }
+        return false;
     }
 }
