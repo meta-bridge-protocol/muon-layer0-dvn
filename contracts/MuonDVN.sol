@@ -10,6 +10,7 @@ import {ILayerZeroDVN} from "./interfaces/ILayerZeroDVN.sol";
 import {IReceiveUlnE2, Verification, UlnConfig} from "./interfaces/IReceiveUlnE2.sol";
 import "./interfaces/IMuonClient.sol";
 import "./utils/PacketV1Codec.sol";
+import {IMuonDVNConfig} from "./interfaces/IMuonDVNConfig.sol";
 
 contract MuonDVN is ILayerZeroDVN, AccessControl {
     using PacketV1Codec for bytes;
@@ -40,7 +41,7 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
     uint256 public muonAppId;
     IMuonClient.PublicKey public muonPublicKey;
     IMuonClient public muon;
-    address public muonValidGateway;
+    IMuonDVNConfig public dvnConfig;
 
     uint256 public fee = 0.001 ether;
 
@@ -59,13 +60,15 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
         IMuonClient.PublicKey memory _muonPublicKey,
         address _muon,
         address _layerZeroEndpointV2,
-        address _layerZeroEndpointV1
+        address _layerZeroEndpointV1,
+        address _dvnConfig
     ) {
         muonAppId = _muonAppId;
         muonPublicKey = _muonPublicKey;
         muon = IMuonClient(_muon);
         layerZeroEndpointV2 = ILayerZeroEndpointV2(_layerZeroEndpointV2);
         layerZeroEndpointV1 = ILayerZeroEndpoint(_layerZeroEndpointV1);
+        dvnConfig = IMuonDVNConfig(_dvnConfig);
         localEid = layerZeroEndpointV2.eid();
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(ADMIN_ROLE, msg.sender);
@@ -145,7 +148,13 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
             )
         );
 
-        _verifyMuonSig(_reqId, hash, _signature, gatewaySignature);
+        _verifyMuonSig(
+            _reqId,
+            hash,
+            _signature,
+            _getGateway(_receiver),
+            gatewaySignature
+        );
 
         _lzVerify(
             _srcEid,
@@ -172,12 +181,6 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
         muonPublicKey = _muonPublicKey;
     }
 
-    function setMuonGateway(
-        address _gatewayAddress
-    ) external onlyRole(ADMIN_ROLE) {
-        muonValidGateway = _gatewayAddress;
-    }
-
     function setLzEndpointV2(
         address _layerZeroEndpointV2
     ) external onlyRole(ADMIN_ROLE) {
@@ -195,6 +198,7 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
         bytes calldata reqId,
         bytes32 hash,
         IMuonClient.SchnorrSign calldata sign,
+        address muonValidGateway,
         bytes calldata gatewaySignature
     ) internal {
         bool verified = muon.muonVerify(
@@ -254,5 +258,12 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
             return true;
         }
         return false;
+    }
+
+    function _getGateway(address _oapp) internal view returns (address) {
+        string[] memory configKeys = new string[](1);
+        configKeys[0] = "shield_node_address";
+        string[] memory configs = dvnConfig.getInfo(_oapp, configKeys);
+        return address(bytes20(bytes(configs[0])));
     }
 }
