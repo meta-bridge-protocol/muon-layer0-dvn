@@ -144,7 +144,8 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
                 _jobId,
                 _packetHeader,
                 _payloadHash,
-                _confirmations
+                _confirmations,
+                _receiver
             )
         );
 
