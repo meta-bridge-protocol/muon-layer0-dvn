@@ -153,7 +153,7 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
             _reqId,
             hash,
             _signature,
-            _getGateway(_receiver),
+            dvnConfig.shieldNodes(_receiver),
             gatewaySignature
         );
 
@@ -259,12 +259,5 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
             return true;
         }
         return false;
-    }
-
-    function _getGateway(address _oapp) internal view returns (address) {
-        string[] memory configKeys = new string[](1);
-        configKeys[0] = "shield_node_address";
-        string[] memory configs = dvnConfig.getInfo(_oapp, configKeys);
-        return address(bytes20(bytes(configs[0])));
     }
 }

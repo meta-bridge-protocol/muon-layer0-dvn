@@ -9,6 +9,8 @@ contract MuonDVNConfig is AccessControl {
 
     uint256 public lastConfigIndex;
 
+    // oapp => shield node address
+    mapping(address => address) public shieldNodes;
     mapping(uint256 => string) public configKeys;
     mapping(string => uint256) public configKeyIndexes;
     // oapp => (key => value)
@@ -17,6 +19,7 @@ contract MuonDVNConfig is AccessControl {
     event ConfigKeyAdd(string indexed key, uint256 index);
     event ConfigKeyRemove(string indexed key);
     event ConfigSet(address indexed oapp, string indexed key, string value);
+    event ShieldNodeSet(address indexed oapp, address indexed shieldNode);
     event ConfigUnSet(address indexed oapp, string indexed key);
     event Verified(uint32 srcEid, uint256 jobId);
 
@@ -103,19 +106,34 @@ contract MuonDVNConfig is AccessControl {
     }
 
     /**
+     * @dev Set oapp's shield node.
+     * Only callable by the CONFIG_ROLE.
+     * @param oapp The address of OApp.
+     * @param shieldNode The configuration keys.
+     */
+    function setShieldNode(
+        address oapp,
+        address shieldNode
+    ) external onlyRole(CONFIG_ROLE) {
+        shieldNodes[oapp] = shieldNode;
+        emit ShieldNodeSet(oapp, shieldNode);
+    }
+
+    /**
      * @dev Retrieves various contract information.
      * @param _configKeys An array of configuration keys to retrieve.
      * @return configValues An array of configuration values corresponding to the keys.
+     * @return shieldNode The address of oapp's shield node.
      */
     function getInfo(
         address oapp,
         string[] memory _configKeys
-    ) external view returns (string[] memory) {
+    ) external view returns (string[] memory, address) {
         uint256 configLength = _configKeys.length;
         string[] memory configValues = new string[](configLength);
         for (uint256 i = 0; i < configLength; i++) {
             configValues[i] = configs[oapp][_configKeys[i]];
         }
-        return configValues;
+        return (configValues, shieldNodes[oapp]);
     }
 }
