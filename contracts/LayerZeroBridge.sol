@@ -1,59 +1,79 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
+import {ERC20Burnable} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {MessagingFee, SendParam, IMetaOFT, ILayerZeroEndpointV2} from "./interfaces/IMetaOFT.sol";
+import {IGateway} from "./interfaces/IGateway.sol";
 
 /**
  * @title LayerZeroBridge Contract
  * @dev LayerZeroBridge is considered to lock DEUS on src chain then mint and send OFT to the dst chain.
  */
-contract LayerZeroBridge is Ownable {
-    using SafeERC20 for IERC20;
+contract LayerZeroBridge is AccessControl {
+    using SafeERC20 for ERC20Burnable;
+
+    struct Token {
+        address oft;
+        address treasury; // The address of escrow
+        address gateway;
+        bool isMainChain;
+        bool isBurnable;
+    }
 
     ILayerZeroEndpointV2 public lzEndpoint;
-    IERC20 public token;
-    IMetaOFT public oft;
+
+    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
+    bytes32 public constant TOKEN_ADDER_ROLE = keccak256("TOKEN_ADDER_ROLE");
+
+    // token => Token
+    mapping(address => Token) public tokens;
 
     event TokenSent(
+        address indexed token,
         uint32 indexed dstEid,
         address indexed from,
-        uint256 indexed amount
+        uint256 amount
     );
+    event TokenAdd(address indexed token);
+    event TokenRemove(address indexed token);
+    event TokenUpdate(address indexed token);
 
-    event TokenClaimed(uint256 amount);
-
-    constructor(
-        address _lzEndpoint,
-        address _owner,
-        address _token,
-        address _oft
-    ) Ownable(_owner) {
-        token = IERC20(_token);
-        oft = IMetaOFT(_oft);
+    constructor(address _lzEndpoint) {
         lzEndpoint = ILayerZeroEndpointV2(_lzEndpoint);
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(ADMIN_ROLE, msg.sender);
     }
 
     // Sends a message from the source to destination chain.
     function send(
+        address _token,
         uint32 _dstEid,
         uint256 _amount,
         uint256 _minAmountLD,
         bytes calldata _extraOptions,
         MessagingFee calldata _fee
     ) external payable {
-        uint256 balance = token.balanceOf(address(this));
+        require(tokens[_token].oft != address(0), "Invalid token");
+        ERC20Burnable token = ERC20Burnable(_token);
+        IMetaOFT oft = IMetaOFT(tokens[_token].oft);
 
-        token.safeTransferFrom(msg.sender, address(this), _amount);
-
-        uint256 receivedAmount = token.balanceOf(address(this)) - balance;
-
-        require(
-            _amount == receivedAmount,
-            "Received amount does not sent amount"
-        );
+        if (tokens[_token].isMainChain || !tokens[_token].isBurnable) {
+            uint256 balance = token.balanceOf(address(this));
+            token.safeTransferFrom(
+                msg.sender,
+                tokens[_token].treasury,
+                _amount
+            );
+            uint256 receivedAmount = token.balanceOf(address(this)) - balance;
+            require(
+                _amount == receivedAmount,
+                "Received amount does not sent amount"
+            );
+        } else {
+            token.burnFrom(msg.sender, _amount);
+        }
 
         if (_fee.lzTokenFee > 0) {
             _payLzToken(_fee.lzTokenFee);
@@ -77,14 +97,58 @@ contract LayerZeroBridge is Ownable {
             payable(msg.sender) // The refund address in case the send call reverts.
         );
 
-        emit TokenSent(_dstEid, msg.sender, _amount);
+        emit TokenSent(_token, _dstEid, msg.sender, _amount);
     }
 
-    function claim(uint256 _amount) external {
-        oft.burnFrom(msg.sender, _amount);
-        token.transfer(msg.sender, _amount);
+    function addToken(
+        address _token,
+        address _oft,
+        address _treasury,
+        address _gateway,
+        bool _isMainChain,
+        bool _isBurnable
+    ) external onlyRole(TOKEN_ADDER_ROLE) {
+        require(_token != address(0), "Invalid token");
+        require(_oft != address(0), "Invalid oft");
+        require(_gateway != address(0), "Invalid gateway");
+        require(tokens[_token].oft == address(0), "Already added");
 
-        emit TokenClaimed(_amount);
+        Token storage token = tokens[_token];
+        token.oft = _oft;
+        token.treasury = _treasury;
+        token.gateway = _gateway;
+        token.isMainChain = _isMainChain;
+        token.isBurnable = _isBurnable;
+        emit TokenAdd(_token);
+    }
+
+    function removeToken(address _token) external onlyRole(TOKEN_ADDER_ROLE) {
+        require(tokens[_token].oft != address(0), "Invalid token");
+
+        delete tokens[_token];
+        emit TokenRemove(_token);
+    }
+
+    function updateToken(
+        address _token,
+        address _oft,
+        address _treasury,
+        address _gateway,
+        bool _isMainChain,
+        bool _isBurnable
+    ) external onlyRole(TOKEN_ADDER_ROLE) {
+        require(tokens[_token].oft != address(0), "Invalid token");
+        require(_token != address(0), "Invalid token");
+        require(_oft != address(0), "Invalid oft");
+        require(_gateway != address(0), "Invalid gateway");
+
+        Token storage token = tokens[_token];
+        token.oft = _oft;
+        token.treasury = _treasury;
+        token.gateway = _gateway;
+        token.isMainChain = _isMainChain;
+        token.isBurnable = _isBurnable;
+        emit TokenUpdate(_token);
     }
 
     /* @dev Quotes the gas needed to pay for the full omnichain transaction.
@@ -92,6 +156,7 @@ contract LayerZeroBridge is Ownable {
      * @return lzTokenFee Estimated gas fee in ZRO token.
      */
     function quoteSend(
+        address _token,
         address _from,
         uint32 _dstEid,
         uint256 _amount,
@@ -99,6 +164,8 @@ contract LayerZeroBridge is Ownable {
         bytes calldata _extraOptions,
         bool _payInLzToken
     ) external view returns (uint256 nativeFee, uint256 lzTokenFee) {
+        require(tokens[_token].oft != address(0), "Invalid token");
+        IMetaOFT oft = IMetaOFT(tokens[_token].oft);
         SendParam memory sendParams = SendParam({
             dstEid: _dstEid, // Destination chain's endpoint ID.
             to: bytes32(uint256(uint160(_from))), // Recipient address.
@@ -124,11 +191,11 @@ contract LayerZeroBridge is Ownable {
         require(lzToken != address(0), "lzToken is unavailable");
 
         // Pay LZ token fee by sending tokens to the endpoint.
-        IERC20(lzToken).safeTransferFrom(
+        ERC20Burnable(lzToken).safeTransferFrom(
             msg.sender,
             address(this),
             _lzTokenFee
         );
-        IERC20(lzToken).approve(address(lzEndpoint), _lzTokenFee);
+        ERC20Burnable(lzToken).approve(address(lzEndpoint), _lzTokenFee);
     }
 }
