@@ -5,7 +5,6 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import {ERC20Burnable} from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {MessagingFee, SendParam, IMetaOFT, ILayerZeroEndpointV2} from "./interfaces/IMetaOFT.sol";
-import {IGateway} from "./interfaces/IGateway.sol";
 
 /**
  * @title LayerZeroBridge Contract
@@ -60,16 +59,17 @@ contract LayerZeroBridge is AccessControl {
         IMetaOFT oft = IMetaOFT(tokens[_token].oft);
 
         if (tokens[_token].isMainChain || !tokens[_token].isBurnable) {
-            uint256 balance = token.balanceOf(address(this));
+            uint256 balance = token.balanceOf(tokens[_token].treasury);
             token.safeTransferFrom(
                 msg.sender,
                 tokens[_token].treasury,
                 _amount
             );
-            uint256 receivedAmount = token.balanceOf(address(this)) - balance;
+            uint256 receivedAmount = token.balanceOf(tokens[_token].treasury) -
+                balance;
             require(
                 _amount == receivedAmount,
-                "Received amount does not sent amount"
+                "Received amount does not match sent amount"
             );
         } else {
             token.burnFrom(msg.sender, _amount);
