@@ -8,11 +8,14 @@ import {ILayerZeroEndpointV2} from "./interfaces/ILayerZeroEndpointV2.sol";
 import {ILayerZeroEndpoint} from "./interfaces/ILayerZeroEndpoint.sol";
 import {ILayerZeroDVN} from "./interfaces/ILayerZeroDVN.sol";
 import {IReceiveUlnE2, Verification, UlnConfig} from "./interfaces/IReceiveUlnE2.sol";
+import {ISendLib} from "./interfaces/ISendLib.sol";
+import {IDVNFeeLib} from "./interfaces/IDVNFeeLib.sol";
+import {IMuonDVNConfig} from "./interfaces/IMuonDVNConfig.sol";
+import {IDVN} from "./interfaces/IDVN.sol";
 import "./interfaces/IMuonClient.sol";
 import "./utils/PacketV1Codec.sol";
-import {IMuonDVNConfig} from "./interfaces/IMuonDVNConfig.sol";
 
-contract MuonDVN is ILayerZeroDVN, AccessControl {
+contract MuonDVN is ILayerZeroDVN, AccessControl, IDVN {
     using PacketV1Codec for bytes;
     using ECDSA for bytes32;
     using MessageHashUtils for bytes32;
@@ -43,12 +46,16 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
     IMuonClient public muon;
     IMuonDVNConfig public dvnConfig;
 
-    uint256 public fee = 0.001 ether;
+    uint16 public defaultMultiplierBps;
+    uint64 public quorum;
+    address public priceFeed;
+    address public feeLib;
 
     mapping(uint256 => Job) public jobs;
 
     // eid => bool
     mapping(uint32 => bool) public supportedDstChain;
+    mapping(uint32 dstEid => DstConfig) public dstConfig;
     // srcEid => ( jobId => isVerified )
     mapping(uint32 => mapping(uint256 => bool)) public verifiedJobs;
 
@@ -61,7 +68,11 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
         address _muon,
         address _layerZeroEndpointV2,
         address _layerZeroEndpointV1,
-        address _dvnConfig
+        address _dvnConfig,
+        uint16 _defaultMultiplierBps,
+        uint64 _quorum,
+        address _priceFeed,
+        address _feeLib
     ) {
         muonAppId = _muonAppId;
         muonPublicKey = _muonPublicKey;
@@ -70,6 +81,10 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
         layerZeroEndpointV1 = ILayerZeroEndpoint(_layerZeroEndpointV1);
         dvnConfig = IMuonDVNConfig(_dvnConfig);
         localEid = layerZeroEndpointV2.eid();
+        defaultMultiplierBps = _defaultMultiplierBps;
+        quorum = _quorum;
+        priceFeed = _priceFeed;
+        feeLib = _feeLib;
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(ADMIN_ROLE, msg.sender);
     }
@@ -82,7 +97,7 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
         payable
         override
         onlyRole(MESSAGE_LIB_ROLE)
-        returns (uint256 _fee)
+        returns (uint256 fee)
     {
         require(supportedDstChain[_param.dstEid], "Unsupported chain");
 
@@ -90,7 +105,7 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
         Job storage newJob = jobs[jobId];
 
         newJob.origin = msg.sender;
-        newJob.srcEid = layerZeroEndpointV2.eid();
+        newJob.srcEid = localEid;
         newJob.dstEid = _param.dstEid;
         newJob.packetHeader = _param.packetHeader;
         newJob.payloadHash = _param.payloadHash;
@@ -101,18 +116,22 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
         );
         newJob.options = _options;
 
+        IDVNFeeLib.FeeParams memory feeParams = IDVNFeeLib.FeeParams(
+            priceFeed,
+            _param.dstEid,
+            _param.confirmations,
+            _param.sender,
+            quorum,
+            defaultMultiplierBps
+        );
+
+        fee = IDVNFeeLib(feeLib).getFeeOnSend(
+            feeParams,
+            dstConfig[_param.dstEid],
+            _options
+        );
+
         emit JobAssigned(jobId);
-
-        _fee = fee;
-    }
-
-    function getFee(
-        uint32 _dstEid,
-        uint64 _confirmations,
-        address _sender,
-        bytes calldata _options
-    ) external view override returns (uint256 _fee) {
-        _fee = fee;
     }
 
     function verify(
@@ -193,6 +212,61 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
         bool status
     ) external onlyRole(ADMIN_ROLE) {
         supportedDstChain[eid] = status;
+    }
+
+    function setPriceFeed(address _priceFeed) external onlyRole(ADMIN_ROLE) {
+        priceFeed = _priceFeed;
+    }
+
+    function setDefaultMultiplierBps(
+        uint16 _multiplierBps
+    ) external onlyRole(ADMIN_ROLE) {
+        defaultMultiplierBps = _multiplierBps;
+    }
+
+    function setDstConfig(
+        DstConfigParam[] calldata _params
+    ) external onlyRole(ADMIN_ROLE) {
+        for (uint256 i = 0; i < _params.length; ++i) {
+            DstConfigParam calldata param = _params[i];
+            dstConfig[param.dstEid] = DstConfig(
+                param.gas,
+                param.multiplierBps,
+                param.floorMarginUSD
+            );
+        }
+        emit SetDstConfig(_params);
+    }
+
+    function setFeeLib(address _feeLib) external onlyRole(ADMIN_ROLE) {
+        feeLib = _feeLib;
+    }
+
+    function withdrawFee(
+        address _lib,
+        address _to,
+        uint256 _amount
+    ) external onlyRole(ADMIN_ROLE) {
+        if (!hasRole(MESSAGE_LIB_ROLE, _lib)) revert Worker_OnlyMessageLib();
+        ISendLib(_lib).withdrawFee(_to, _amount);
+        emit Withdraw(_lib, _to, _amount);
+    }
+
+    function getFee(
+        uint32 _dstEid,
+        uint64 _confirmations,
+        address _sender,
+        bytes calldata _options
+    ) external view override returns (uint256 _fee) {
+        IDVNFeeLib.FeeParams memory params = IDVNFeeLib.FeeParams(
+            priceFeed,
+            _dstEid,
+            _confirmations,
+            _sender,
+            quorum,
+            defaultMultiplierBps
+        );
+        return IDVNFeeLib(feeLib).getFee(params, dstConfig[_dstEid], _options);
     }
 
     function _verifyMuonSig(
