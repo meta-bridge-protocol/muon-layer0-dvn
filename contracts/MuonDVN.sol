@@ -43,7 +43,7 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
     IMuonClient public muon;
     IMuonDVNConfig public dvnConfig;
 
-    uint256 public fee = 0.001 ether;
+    uint256 public fee;
 
     mapping(uint256 => Job) public jobs;
 
@@ -103,15 +103,6 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
 
         emit JobAssigned(jobId);
 
-        _fee = fee;
-    }
-
-    function getFee(
-        uint32 _dstEid,
-        uint64 _confirmations,
-        address _sender,
-        bytes calldata _options
-    ) external view override returns (uint256 _fee) {
         _fee = fee;
     }
 
@@ -193,6 +184,19 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
         bool status
     ) external onlyRole(ADMIN_ROLE) {
         supportedDstChain[eid] = status;
+    }
+
+    function setFee(uint256 _fee) external onlyRole(ADMIN_ROLE) {
+        fee = _fee;
+    }
+
+    function getFee(
+        uint32, // _dstEid
+        uint64, // _confirmations
+        address, // _sender
+        bytes calldata // _options
+    ) external view override returns (uint256 _fee) {
+        _fee = fee;
     }
 
     function _verifyMuonSig(
