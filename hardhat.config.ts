@@ -26,7 +26,7 @@ const networks: { [networkName: string]: HttpNetworkUserConfig } = {
   },
   bscTestnet: {
     eid: EndpointId.BSC_V2_TESTNET,
-    url: "https://bsc-testnet.publicnode.com",
+    url: "https://rpc.ankr.com/bsc_testnet_chapel",
     chainId: 97,
     accounts
   }
