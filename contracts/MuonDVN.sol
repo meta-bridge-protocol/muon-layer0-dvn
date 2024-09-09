@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {ILayerZeroEndpointV2} from "./interfaces/ILayerZeroEndpointV2.sol";
 import {ILayerZeroEndpoint} from "./interfaces/ILayerZeroEndpoint.sol";
 import {ILayerZeroDVN} from "./interfaces/ILayerZeroDVN.sol";
+import {ISendLib} from "./interfaces/ISendLib.sol";
 import {IReceiveUlnE2, Verification, UlnConfig} from "./interfaces/IReceiveUlnE2.sol";
 import "./interfaces/IMuonClient.sol";
 import "./utils/PacketV1Codec.sol";
@@ -54,6 +55,7 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
 
     event JobAssigned(uint256 jobId);
     event Verified(uint32 srcEid, uint256 jobId);
+    event WithdrawFee(address lib, address to, uint256 amount);
 
     constructor(
         uint256 _muonAppId,
@@ -188,6 +190,16 @@ contract MuonDVN is ILayerZeroDVN, AccessControl {
 
     function setFee(uint256 _fee) external onlyRole(ADMIN_ROLE) {
         fee = _fee;
+    }
+
+    function withdrawFee(
+        address _lib,
+        address _to,
+        uint256 _amount
+    ) external onlyRole(ADMIN_ROLE) {
+        require(hasRole(MESSAGE_LIB_ROLE, _lib), "Invalid lib");
+        ISendLib(_lib).withdrawFee(_to, _amount);
+        emit WithdrawFee(_lib, _to, _amount);
     }
 
     function getFee(
