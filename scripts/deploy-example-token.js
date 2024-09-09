@@ -9,7 +9,7 @@ async function main() {
 
   const args = [
     "Example Token",
-    "EERC"
+    "eToken"
   ]
 
   const provider = new providers.JsonRpcProvider(hre.network.config.url)

@@ -22,12 +22,20 @@ const networks: { [networkName: string]: HttpNetworkUserConfig } = {
     eid: EndpointId.SEPOLIA_V2_TESTNET,
     url: "https://rpc.ankr.com/eth_sepolia",
     chainId: 11155111,
-    accounts
+    accounts,
+    gas: 1600000,
+    gasPrice: 5616147756
   },
   bscTestnet: {
     eid: EndpointId.BSC_V2_TESTNET,
     url: "https://rpc.ankr.com/bsc_testnet_chapel",
     chainId: 97,
+    accounts
+  },
+  arbitrumSepolia: {
+    eid: EndpointId.ARBSEP_V2_TESTNET,
+    url: "https://rpc.ankr.com/arbitrum_sepolia",
+    chainId: 421614,
     accounts
   }
 }
@@ -72,7 +80,8 @@ const config: HardhatUserConfig = {
       polygonMumbai: process.env.POLYGON_KEY || "",
       lineaMainnet: process.env.LINEASCAN_KEY || "",
       optimisticEthereum: process.env.OPTIMISM_KEY || "",
-      avalancheFujiTestnet: process.env.AVALANCHE_KEY || ""
+      avalancheFujiTestnet: process.env.AVALANCHE_KEY || "",
+      arbitrumSepolia: process.env.ARBSCAN_KEY || ""
     },
     customChains: [
       {
@@ -89,6 +98,14 @@ const config: HardhatUserConfig = {
         urls: {
           apiURL: "https://api.lineascan.build/api",
           browserURL: "https://lineascan.build/",
+        },
+      },
+      {
+        network: "arbitrumSepolia",
+        chainId: 421614,
+        urls: {
+          apiURL: "https://api-sepolia.arbiscan.io/api",
+          browserURL: "https://sepolia.arbiscan.io/",
         },
       }
     ]

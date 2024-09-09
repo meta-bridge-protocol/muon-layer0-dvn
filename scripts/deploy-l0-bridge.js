@@ -8,10 +8,7 @@ function sleep(milliseconds) {
 async function main() {
 
   const args = [
-    "0xcc1ae8Cf5D3904Cef3360A9532B477529b177cCE",
-    "0xb57490CDAABEDb450df33EfCdd93079A24ac5Ce5",
-    "0xb0EAEA0bb2Cc6EED433c4494008551aA97044640",
-    "0x79Aa1f9e8defA0245752EDAbb790505B4E863EA6"
+    "0x6EDCE65403992e310A62460808c4b910D972f10f",
   ]
 
   const provider = new providers.JsonRpcProvider(hre.network.config.url)
