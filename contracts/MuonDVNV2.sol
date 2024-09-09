@@ -15,7 +15,7 @@ import {IDVN} from "./interfaces/IDVN.sol";
 import "./interfaces/IMuonClient.sol";
 import "./utils/PacketV1Codec.sol";
 
-contract MuonDVN is ILayerZeroDVN, AccessControl, IDVN {
+contract MuonDVNV2 is ILayerZeroDVN, AccessControl, IDVN {
     using PacketV1Codec for bytes;
     using ECDSA for bytes32;
     using MessageHashUtils for bytes32;
