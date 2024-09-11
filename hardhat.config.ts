@@ -37,6 +37,17 @@ const networks: { [networkName: string]: HttpNetworkUserConfig } = {
     url: "https://rpc.ankr.com/arbitrum_sepolia",
     chainId: 421614,
     accounts
+  },
+  polygon: {
+    url: `https://endpoints.omniatech.io/v1/matic/mainnet/public`,
+    chainId: 137,
+    accounts,
+    gasPrice: 50000000000
+  },
+  avalanche: {
+    url: `https://rpc.ankr.com/avalanche`,
+    chainId: 43114,
+    accounts
   }
 }
 
@@ -81,7 +92,8 @@ const config: HardhatUserConfig = {
       lineaMainnet: process.env.LINEASCAN_KEY || "",
       optimisticEthereum: process.env.OPTIMISM_KEY || "",
       avalancheFujiTestnet: process.env.AVALANCHE_KEY || "",
-      arbitrumSepolia: process.env.ARBSCAN_KEY || ""
+      arbitrumSepolia: process.env.ARBSCAN_KEY || "",
+      avalanche: process.env.AVALANCHE_KEY || ""
     },
     customChains: [
       {
