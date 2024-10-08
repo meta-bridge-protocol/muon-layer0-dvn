@@ -1,20 +1,26 @@
-import 'dotenv/config'
+import "dotenv/config";
 import "@nomicfoundation/hardhat-toolbox";
-import 'hardhat-deploy'
-import '@openzeppelin/hardhat-upgrades';
-import '@layerzerolabs/toolbox-hardhat';
+import "hardhat-deploy";
+import "@nomiclabs/hardhat-ethers";
+import "@openzeppelin/hardhat-upgrades";
+import "@layerzerolabs/toolbox-hardhat";
 import { HttpNetworkUserConfig } from "hardhat/types";
-import { HardhatUserConfig, HttpNetworkAccountsUserConfig } from 'hardhat/types';
-import { EndpointId } from '@layerzerolabs/lz-definitions';
+import {
+  HardhatUserConfig,
+  HttpNetworkAccountsUserConfig,
+} from "hardhat/types";
+import { EndpointId } from "@layerzerolabs/lz-definitions";
 
-const PRIVATE_KEY = process.env.PRIVATE_KEY
+const PRIVATE_KEY = process.env.PRIVATE_KEY;
 
-const accounts: HttpNetworkAccountsUserConfig | undefined = PRIVATE_KEY ? [PRIVATE_KEY] : undefined
+const accounts: HttpNetworkAccountsUserConfig | undefined = PRIVATE_KEY
+  ? [PRIVATE_KEY]
+  : undefined;
 
 if (accounts == null) {
-    console.warn(
-        'Could not find MNEMONIC or PRIVATE_KEY environment variables. It will not be possible to execute transactions in your example.'
-    )
+  console.warn(
+    "Could not find MNEMONIC or PRIVATE_KEY environment variables. It will not be possible to execute transactions in your example."
+  );
 }
 
 const networks: { [networkName: string]: HttpNetworkUserConfig } = {
@@ -24,39 +30,44 @@ const networks: { [networkName: string]: HttpNetworkUserConfig } = {
     chainId: 11155111,
     accounts,
     gas: 1600000,
-    gasPrice: 5616147756
+    gasPrice: 5616147756,
   },
   bscTestnet: {
     eid: EndpointId.BSC_V2_TESTNET,
     url: "https://rpc.ankr.com/bsc_testnet_chapel",
     chainId: 97,
-    accounts
+    accounts,
   },
   arbitrumSepolia: {
     eid: EndpointId.ARBSEP_V2_TESTNET,
     url: "https://rpc.ankr.com/arbitrum_sepolia",
     chainId: 421614,
-    accounts
+    accounts,
   },
   polygon: {
-    url: `https://endpoints.omniatech.io/v1/matic/mainnet/public`,
+    url: `https://polygon.llamarpc.com`,
     chainId: 137,
     accounts,
-    gasPrice: 50000000000
+    gas: 2500000,
+    gasPrice: 100000000000,
   },
   avalanche: {
     url: `https://rpc.ankr.com/avalanche`,
     chainId: 43114,
-    accounts
-  }
-}
+    accounts,
+  },
+  ftm: {
+    url: `https://rpcapi.fantom.network`,
+    chainId: 250,
+    accounts,
+  },
+};
 
 const config: HardhatUserConfig = {
   defaultNetwork: "hardhat",
   networks: {
-    hardhat: {
-    },
-    ...networks
+    hardhat: {},
+    ...networks,
   },
   solidity: {
     compilers: [
@@ -66,19 +77,19 @@ const config: HardhatUserConfig = {
           optimizer: {
             enabled: true,
             runs: 200,
-          }
-        }
-      }
-    ]
+          },
+        },
+      },
+    ],
   },
   paths: {
     sources: "./contracts",
     tests: "./test",
     cache: "./cache",
-    artifacts: "./artifacts"
+    artifacts: "./artifacts",
   },
   mocha: {
-    timeout: 40000
+    timeout: 40000,
   },
   etherscan: {
     apiKey: {
@@ -93,14 +104,15 @@ const config: HardhatUserConfig = {
       optimisticEthereum: process.env.OPTIMISM_KEY || "",
       avalancheFujiTestnet: process.env.AVALANCHE_KEY || "",
       arbitrumSepolia: process.env.ARBSCAN_KEY || "",
-      avalanche: process.env.AVALANCHE_KEY || ""
+      avalanche: process.env.AVALANCHE_KEY || "",
+      ftm: process.env.FTMSCAN_KEY || "",
     },
     customChains: [
       {
         network: "ftm",
         chainId: 250,
         urls: {
-          apiURL: "https://ftmscan.com/",
+          apiURL: "https://api.ftmscan.com/api",
           browserURL: "https://ftmscan.com/",
         },
       },
@@ -119,13 +131,13 @@ const config: HardhatUserConfig = {
           apiURL: "https://api-sepolia.arbiscan.io/api",
           browserURL: "https://sepolia.arbiscan.io/",
         },
-      }
-    ]
+      },
+    ],
   },
   namedAccounts: {
-      deployer: {
-          default: 0, // wallet address of index[0], of the mnemonic in .env
-      },
+    deployer: {
+      default: 0, // wallet address of index[0], of the mnemonic in .env
+    },
   },
 };
 
