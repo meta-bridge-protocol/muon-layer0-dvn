@@ -201,10 +201,20 @@ contract MuonDVNV2 is ILayerZeroDVN, AccessControl, IDVN {
         muonPublicKey = _muonPublicKey;
     }
 
+    function setDVNConfig(address _dvnConfig) external onlyRole(ADMIN_ROLE) {
+        dvnConfig = IMuonDVNConfig(_dvnConfig);
+    }
+
     function setLzEndpointV2(
         address _layerZeroEndpointV2
     ) external onlyRole(ADMIN_ROLE) {
         layerZeroEndpointV2 = ILayerZeroEndpointV2(_layerZeroEndpointV2);
+    }
+
+    function setLzEndpointV1(
+        address _layerZeroEndpointV1
+    ) external onlyRole(ADMIN_ROLE) {
+        layerZeroEndpointV1 = ILayerZeroEndpoint(_layerZeroEndpointV1);
     }
 
     function updateSupportedDstChain(
