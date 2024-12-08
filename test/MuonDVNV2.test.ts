@@ -218,17 +218,34 @@ describe("MuonDVN", () => {
     expect(await muonDVN.defaultMultiplierBps()).to.equal(300);
   });
 
-  // it("should allow admin to setDstConfig", async () => {
-  // expect(await muonDVN.dstConfig()).to.equal(100);
-  // await expect(
-  //   muonDVN.connect(addr1).setDstConfig(200)
-  // ).to.be.revertedWithCustomError(
-  //   muonDVN,
-  //   "AccessControlUnauthorizedAccount"
-  // );
-  // await muonDVN.connect(owner).setDstConfig(300);
-  // expect(await muonDVN.dstConfig()).to.equal(300);
-  // });
+  it("should allow admin to setDstConfig", async () => {
+    const dstConfigParams = [
+      {
+        dstEid: 1,
+        gas: 100000,
+        multiplierBps: 5000,
+        floorMarginUSD: ethers.BigNumber.from("1000000000000000000"),
+      },
+      {
+        dstEid: 2,
+        gas: 200000,
+        multiplierBps: 6000,
+        floorMarginUSD: ethers.BigNumber.from("2000000000000000000"),
+      },
+    ];
+
+    await expect(
+      muonDVN.connect(addr1).setDstConfig(dstConfigParams)
+    ).revertedWithCustomError(muonDVN, "AccessControlUnauthorizedAccount");
+
+    await muonDVN.connect(owner).setDstConfig(dstConfigParams);
+    for (const param of dstConfigParams) {
+      const config = await muonDVN.dstConfig(param.dstEid);
+      expect(config.gas).to.equal(param.gas);
+      expect(config.multiplierBps).to.equal(param.multiplierBps);
+      expect(config.floorMarginUSD).to.equal(param.floorMarginUSD);
+    }
+  });
 
   it("should allow admin to setFeeLib", async () => {
     expect(await muonDVN.feeLib()).to.equal(feeLibMock.address);
