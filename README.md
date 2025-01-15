@@ -1,6 +1,7 @@
 # Muon DVN
 
-It's a LayerZero DVN that is responsible to verify packet integrity across multiple chains. It has three main components that are described below.
+It's a interface to the LayerZero DVN that is responsible to verify packet integrity across multiple chains. In use.
+It has three main components that are described below.
 
 ## Components
 - ### DVN contract
