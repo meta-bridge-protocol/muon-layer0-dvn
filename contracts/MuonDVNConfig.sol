@@ -11,7 +11,7 @@ contract MuonDVNConfig is AccessControl {
 
     // oapp => shield node address
     mapping(address => address) public shieldNodes;
-    mapping(uint256 => string) public configKeys;
+    mapping(uint256 => string) public configKeys; // this lets user configure any possible parameter (that has been coded in the jsdapp)
     mapping(string => uint256) public configKeyIndexes;
     // oapp => (key => value)
     mapping(address => mapping(string => string)) public configs;
