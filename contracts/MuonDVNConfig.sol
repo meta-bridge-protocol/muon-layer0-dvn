@@ -33,6 +33,7 @@ contract MuonDVNConfig is AccessControl {
      * @dev Add several configuration keys.
      * Only callable by the ADMIN_ROLE.
      * @param keys The configuration keys.
+     * @notice keys lets user configure any possible parameter (that has been coded in the jsdapp)
      */
     function addConfigKeys(string[] memory keys) external onlyRole(ADMIN_ROLE) {
         uint256 length = keys.length;
