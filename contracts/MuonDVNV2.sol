@@ -15,11 +15,16 @@ import {IDVN} from "./interfaces/IDVN.sol";
 import "./interfaces/IMuonClient.sol";
 import "./utils/PacketV1Codec.sol";
 
+/**
+ * @title MuonDVN
+ * @notice it aims to verify bridge transactions on LZ protocol leveraging MUON protocol
+ */
 contract MuonDVNV2 is ILayerZeroDVN, AccessControl, IDVN {
     using PacketV1Codec for bytes;
     using ECDSA for bytes32;
     using MessageHashUtils for bytes32;
 
+    // Job assigend to the DVN in order to verify
     struct Job {
         address origin;
         uint32 srcEid;
@@ -33,8 +38,11 @@ contract MuonDVNV2 is ILayerZeroDVN, AccessControl, IDVN {
     }
 
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
+    // The role that should be assigned to LZ message libs
+    // it let message libs to assign a job to the DVN
     bytes32 public constant MESSAGE_LIB_ROLE = keccak256("MESSAGE_LIB_ROLE");
 
+    // Support both LZ v1 and v2
     ILayerZeroEndpointV2 public layerZeroEndpointV2;
     ILayerZeroEndpoint public layerZeroEndpointV1;
     uint32 public immutable localEid;
@@ -44,8 +52,12 @@ contract MuonDVNV2 is ILayerZeroDVN, AccessControl, IDVN {
     uint256 public muonAppId;
     IMuonClient.PublicKey public muonPublicKey;
     IMuonClient public muon;
+
+    // the address of dvn config contract that lets client customize their configs
     IMuonDVNConfig public dvnConfig;
 
+    // Use LZ price feed for now
+    // price feed parameters
     uint16 public defaultMultiplierBps;
     uint64 public quorum;
     address public priceFeed;
@@ -53,8 +65,10 @@ contract MuonDVNV2 is ILayerZeroDVN, AccessControl, IDVN {
 
     mapping(uint256 => Job) public jobs;
 
+    // supported destinations
     // eid => bool
     mapping(uint32 => bool) public supportedDstChain;
+    // individual fee configs for each destination 
     mapping(uint32 dstEid => DstConfig) public dstConfig;
     // srcEid => ( jobId => isVerified )
     mapping(uint32 => mapping(uint256 => bool)) public verifiedJobs;
@@ -89,6 +103,13 @@ contract MuonDVNV2 is ILayerZeroDVN, AccessControl, IDVN {
         _grantRole(ADMIN_ROLE, msg.sender);
     }
 
+    /**
+     * @dev this function will be called by LZ message libs
+     * The offchain component (DVN executor) listens to the jobs assigned 
+     * to the DVN, then gets a signature from MUON app and verifies 
+     * the jobs on the destination
+     * @return fee DVN fee
+     */
     function assignJob(
         AssignJobParam calldata _param,
         bytes calldata _options
@@ -134,6 +155,11 @@ contract MuonDVNV2 is ILayerZeroDVN, AccessControl, IDVN {
         emit JobAssigned(jobId);
     }
 
+    /**
+     * @dev this function is called by the DVN executor on destionation,
+     * the bridge transaction is verified by the MUON app and a TSS signature 
+     * will be generated to verify the job
+     */
     function verify(
         uint32 _srcEid,
         uint32 _dstEid,
@@ -252,6 +278,12 @@ contract MuonDVNV2 is ILayerZeroDVN, AccessControl, IDVN {
         feeLib = _feeLib;
     }
 
+    /**
+     * @notice admin can withdraw fees from DVN
+     * @param _lib LZ message lib
+     * @param _to recipient address
+     * @param _amount amount to withdraw
+     */
     function withdrawFee(
         address _lib,
         address _to,
@@ -262,6 +294,9 @@ contract MuonDVNV2 is ILayerZeroDVN, AccessControl, IDVN {
         emit Withdraw(_lib, _to, _amount);
     }
 
+    /**
+     * @dev this function is called by LZ to specify DVN fee
+     */
     function getFee(
         uint32 _dstEid,
         uint64 _confirmations,
@@ -305,6 +340,9 @@ contract MuonDVNV2 is ILayerZeroDVN, AccessControl, IDVN {
         }
     }
 
+    /**
+     * @dev verify the bridge transaction/job on LZ
+     */
     function _lzVerify(
         uint32 _srcEid,
         bytes memory _packetHeader,
