@@ -12,6 +12,13 @@ async function main() {
   const provider = new providers.JsonRpcProvider(hre.network.config.url)
   const signer = new Wallet(process.env.PRIVATE_KEY, provider);
 
+  // const feeData = await ethers.provider.getFeeData();
+  // const contract = await ethers.getContractFactory("MuonDVNConfig");
+  // await contract.deploy({
+  //   maxPriorityFeePerGas: feeData.maxPriorityFeePerGas, // tip the miner to execute the transaction
+  //   maxFeePerGas: feeData.maxFeePerGas, // maxFeePerGas = baseFeePerGas + maxPriorityFeePerGas
+  //   type: 2
+  // });
   const contract = await ethers.deployContract("MuonDVNConfig", args, signer);
 
   await contract.deployed();
