@@ -171,7 +171,9 @@ async function main() {
                     feeConfig.gas,
                     feeConfig.multiplierBps,
                     0n,
-                  ]]);
+                  ]], {
+                    gasLimit: 3_00_000 
+                  });
                 }
                 await tx.wait();
               } else {
@@ -180,7 +182,6 @@ async function main() {
                 );
               }
             } catch (error) {
-              console.log(error);
               console.log(error.toString());
             }
           }
